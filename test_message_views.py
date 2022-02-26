@@ -51,18 +51,17 @@ class MessageViewTestCase(TestCase):
 
         db.session.commit()
 
-    def test_add_message(self):
-        """Can use add a message?"""
+    def tearDown(self):
+        res = super().tearDown()
+        db.session.rollback()
+        return res
 
-        # Since we need to change the session to mimic logging in,
-        # we need to use the changing-session trick:
+    def test_add_message(self):
+        """Can user add a message?"""
 
         with self.client as c:
             with c.session_transaction() as sess:
                 sess[CURR_USER_KEY] = self.testuser.id
-
-            # Now, that session setting is saved, so we can have
-            # the rest of ours test
 
             resp = c.post("/messages/new", data={"text": "Hello"})
 
@@ -71,3 +70,59 @@ class MessageViewTestCase(TestCase):
 
             msg = Message.query.one()
             self.assertEqual(msg.text, "Hello")
+
+    def test_add_message_unathorized(self):
+        """Can user add a message?"""
+
+        with self.client as c:
+
+            resp = c.get("/messages/new", follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            # Make sure it redirects
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn('Access unauthorized.', html)
+            
+    def setup_messages(self):
+         
+        m1 = Message(text='Test message one',user_id=self.testuser.id)
+        m1.id = 1
+        m2 = Message(text='Test message two', user_id=self.testuser.id)
+        m2.id = 2
+        m3 = Message(text='Test message three', user_id=self.testuser.id)
+        m3.id = 3
+        db.session.add_all([m1,m2,m3])
+        db.session.commit()
+
+        self.testuser.messages.append(m1)
+        self.testuser.messages.append(m2)
+        self.testuser.messages.append(m3)
+        db.session.commit()
+        # print(self.testuser.messages)
+
+    def test_msg_show(self):
+        self.setup_messages()
+
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+            
+            resp = c.get('/messages/1')
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn('Test message one', html)
+
+    def test_msg_delete(self):
+        self.setup_messages()
+
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+            
+            resp = c.post('/messages/1/delete', follow_redirects=True)
+            html = resp.get_data(as_text=True)
+            msgs = Message.query.all()
+            
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(len(msgs), 2)

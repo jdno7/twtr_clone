@@ -7,6 +7,10 @@ from sqlalchemy.exc import IntegrityError
 from forms import EditUserForm, UserAddForm, LoginForm, MessageForm
 from models import db, connect_db, User, Message
 
+from flask_bcrypt import Bcrypt
+
+bcrypt = Bcrypt()
+
 CURR_USER_KEY = "curr_user"
 
 app = Flask(__name__)
@@ -143,8 +147,6 @@ def users_show(user_id):
     """Show user profile."""
 
     user = User.query.get_or_404(user_id)
-    # import pdb
-    # pdb.set_trace()
     # snagging messages in order from the database;
     # user.messages won't be in order by default
     messages = (Message
@@ -153,6 +155,7 @@ def users_show(user_id):
                 .order_by(Message.timestamp.desc())
                 .limit(100)
                 .all())
+
     return render_template('users/show.html', user=user, messages=messages)
 
 
@@ -220,28 +223,24 @@ def profile():
         return redirect("/")
 
     user = User.query.get(g.user.id)
-    form = EditUserForm(obj=user)
-    # import pdb
-    # pdb.set_trace()
+    
+    form = EditUserForm(username=user.username, email=user.email, image_url=user.image_url, header_image_url=user.header_image_url, bio=user.bio, password='')
+  
     if form.validate_on_submit():
-        # User.authenticate(form.username.data,
-        #                   form.password.data)      
-        if user.password == form.password.data:
+        if bcrypt.check_password_hash(user.password, form.password.data):
             user.username = form.username.data
             user.image_url = form.image_url.data
             user.email = form.email.data
             user.header_image_url = form.header_image_url.data
             user.bio = form.bio.data
-            # import pdb
-            # pdb.set_trace()
-            db.session.add(user)
+         
             db.session.commit()
             return redirect(f'/users/{user.id}')
         else:
             flash("Access unauthorized.", "danger")
             return redirect("/")
     else:
-        return render_template('users/edit.html', form=form)
+        return render_template('users/edit.html', form=form, user=user)
 
 
 @app.route('/users/delete', methods=["POST"])
@@ -276,7 +275,7 @@ def add_like(msg_id):
 
 @app.route('/users/delete_like/<int:msg_id>', methods=['POST'])
 def remove_like(msg_id):
-    """Like a message for the currently-logged-in user."""
+    """UnLike a message for the currently-logged-in user."""
 
     if not g.user:
         flash("Access unauthorized.", "danger")
@@ -331,6 +330,7 @@ def messages_show(message_id):
     """Show a message."""
 
     msg = Message.query.get(message_id)
+    
     return render_template('messages/show.html', message=msg)
 
 
@@ -370,6 +370,7 @@ def homepage():
                     .order_by(Message.timestamp.desc())
                     .limit(100)
                     .all())
+                    
         # import pdb
         # pdb.set_trace()
 
